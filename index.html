@@ -72,8 +72,13 @@
             for (let i = 0; i < maxRetries; i++) {
                 try {
                     const response = await fetch(url, options);
-                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                    return await response.json();
+                    const data = await response.json();
+                    
+                    // Menangkap pesan error asli dari server Google Gemini AI
+                    if (!response.ok) {
+                        throw new Error(data.error?.message || `HTTP error! status: ${response.status}`);
+                    }
+                    return data;
                 } catch (error) {
                     if (i === maxRetries - 1) throw error;
                     await new Promise(res => setTimeout(res, delays[i]));
@@ -105,12 +110,13 @@
             
             const audioRef = useRef(null);
 
+            // DAFTAR SUARA RESMI GEMINI AI (Tidak Boleh Diubah Namanya)
             const voices = [
-                { id: 'Kore', label: 'Kore (Wanita Natural)' },
-                { id: 'Aoede', label: 'Aoede (Wanita Ramah)' },
-                { id: 'Zephyr', label: 'Zephyr (Pria Berat)' },
-                { id: 'Fenrir', label: 'Fenrir (Pria Tegas)' },
-                { id: 'Leda', label: 'Leda (Wanita Profesional)' }
+                { id: 'Kore', label: 'Kore (Wanita Natural & Elegan)' },
+                { id: 'Aoede', label: 'Aoede (Wanita Ramah & Hangat)' },
+                { id: 'Charon', label: 'Charon (Pria Dewasa & Berat)' },
+                { id: 'Fenrir', label: 'Fenrir (Pria Tegas & Dalam)' },
+                { id: 'Puck', label: 'Puck (Pria Santai & Jelas)' }
             ];
 
             useEffect(() => {
@@ -206,30 +212,30 @@
                     
                 announcementText = announcementText.replace(/,\s*,/g, ',').replace(/\s+/g, ' ');
 
-                // Tanda kutip dihapus dan dikembalikan persis seperti instruksi awal 
-                // agar AI berbicara layaknya manusia yang fasih berbahasa Indonesia
-                const aiPrompt = `Say clearly, professionally, and naturally in a human voice in Indonesian: ${announcementText}`;
+                // Memerintahkan AI sepenuhnya menggunakan bahasa Indonesia 
+                // agar sistem AI langsung mengaktifkan logat lokal yang fasih dan intonasi manusia asli
+                const aiPrompt = `Ucapkan kalimat berikut dengan nada bicara manusia asli yang sangat natural, ramah, dan fasih berbahasa Indonesia tanpa logat asing: ${announcementText}`;
 
-                try {
-                    if (!geminiApiKey) {
-                        throw new Error("API Key tidak ditemukan di Spreadsheet. Pastikan Sel C1 di Sheet Data sudah terisi.");
-                    }
+            try {
+                if (!geminiApiKey) {
+                    throw new Error("API Key tidak ditemukan! Harap masukkan API Key di Sel C1 (Sheet Data).");
+                }
 
-                    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${geminiApiKey}`;
-                    
-                    const payload = {
-                        contents: [{ parts: [{ text: aiPrompt }] }],
-                        generationConfig: {
-                            responseModalities: ["AUDIO"],
-                            speechConfig: {
-                                voiceConfig: { prebuiltVoiceConfig: { voiceName: voiceName } }
-                            }
-                        },
-                        model: "gemini-2.5-flash-preview-tts"
-                    };
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${geminiApiKey}`;
+                
+                const payload = {
+                    contents: [{ parts: [{ text: aiPrompt }] }],
+                    generationConfig: {
+                        responseModalities: ["AUDIO"],
+                        speechConfig: {
+                            voiceConfig: { prebuiltVoiceConfig: { voiceName: voiceName } }
+                        }
+                    },
+                    model: "gemini-2.5-flash-preview-tts"
+                };
 
-                    const data = await fetchWithRetry(url, {
-                        method: "POST",
+                const data = await fetchWithRetry(url, {
+                    method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify(payload)
                     });
@@ -260,15 +266,10 @@
                     }, 100);
 
                 } catch (err) {
-                    console.warn("Menggunakan fallback:", err.message);
-                    try {
-                        setStatus('playing');
-                        await playNativeTTS(announcementText);
-                        setStatus('idle');
-                    } catch (fallbackErr) {
-                        setStatus('error');
-                        setErrorMessage(err.message + " - Dan gagal menggunakan suara cadangan.");
-                    }
+                    console.error("Kesalahan AI:", err);
+                    setStatus('error');
+                    // Langsung menampilkan error API Key agar pengguna tahu mengapa suara AI tidak keluar
+                    setErrorMessage(`AI Gagal: ${err.message}. Pastikan API Key Anda di Sel C1 (Sheet Data) benar dan aktif!`);
                 }
             };
 
@@ -490,7 +491,10 @@
                                         </label>
                                         <textarea
                                             value={templateText}
-                                            onChange={(e) => setTemplateText(e.target.value)}
+                                            onChange={(e) => {
+                                                setTemplateText(e.target.value);
+                                                setAudioUrl(null); // Otomatis hapus memori audio lama jika template diubah
+                                            }}
                                             rows="4"
                                             className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:border-teal-500 focus:ring-4 focus:ring-teal-500/10 transition-all outline-none bg-slate-50 focus:bg-white resize-none text-sm font-medium shadow-inner"
                                         />
@@ -506,7 +510,10 @@
                                         </label>
                                         <select
                                             value={voiceName}
-                                            onChange={(e) => setVoiceName(e.target.value)}
+                                            onChange={(e) => {
+                                                setVoiceName(e.target.value);
+                                                setAudioUrl(null); // Otomatis hapus memori audio lama agar user memanggil ulang suara baru
+                                            }}
                                             className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:border-teal-500 focus:ring-4 focus:ring-teal-500/10 transition-all outline-none bg-slate-50 focus:bg-white text-sm font-medium cursor-pointer shadow-inner"
                                         >
                                             {voices.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
