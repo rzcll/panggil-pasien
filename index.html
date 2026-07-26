@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Volume2, User, MapPin, Play, Loader2, AlertCircle, Settings, CheckCircle2, MessageSquare, Home, X } from 'lucide-react';
+import { Volume2, User, MapPin, Play, Loader2, AlertCircle, Settings, CheckCircle2, MessageSquare, Home, X, Key } from 'lucide-react';
 
 // Fungsi konversi Base64 PCM ke format file WAV
 function pcmBase64ToWav(base64, sampleRate = 24000) {
@@ -60,6 +60,9 @@ export default function App() {
   const [room, setRoom] = useState('Poli Umum');
   const [voiceName, setVoiceName] = useState('Kore');
   
+  // State untuk API Key, mengambil dari localStorage jika ada
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem('gemini_api_key') || '');
+  
   // State untuk Template Pesan. default menggunakan {alamat}
   const [templateText, setTemplateText] = useState('Panggilan kepada pasien atas nama, {nama}, dari {alamat}, silakan menuju ke, {ruangan}.');
   
@@ -84,6 +87,11 @@ export default function App() {
     { id: 'Fenrir', label: 'Fenrir (Pria Tegas)' },
     { id: 'Leda', label: 'Leda (Wanita Profesional)' }
   ];
+
+  // Simpan API Key ke localStorage setiap kali ada perubahan
+  useEffect(() => {
+    localStorage.setItem('gemini_api_key', apiKey);
+  }, [apiKey]);
 
   // Bersihkan memory URL saat URL berubah atau komponen dibongkar
   useEffect(() => {
@@ -129,6 +137,12 @@ export default function App() {
       return;
     }
 
+    if (!apiKey.trim()) {
+      setErrorMessage("API Key belum diisi. Silakan masukkan Gemini API Key di menu Pengaturan.");
+      setShowSettings(true);
+      return;
+    }
+
     setErrorMessage('');
     setStatus('loading');
 
@@ -149,7 +163,6 @@ export default function App() {
     const aiPrompt = `Speak the following text in Indonesian. Use a highly realistic, expressive, and natural human voice. Add natural breathing pauses, appropriate emphasis, and a warm, professional tone just like a real human announcer: "${announcementText}"`;
 
     try {
-      const apiKey = typeof window !== 'undefined' && window.__apiKey ? window.__apiKey : ""; 
       const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
       
       const payload = {
@@ -405,6 +418,23 @@ export default function App() {
             </div>
 
             <div className="space-y-5">
+              {/* Input API Key */}
+              <div>
+                <label className="flex items-center text-sm font-semibold text-slate-600 mb-2">
+                  <Key className="w-4 h-4 mr-2 text-teal-500" /> Gemini API Key
+                </label>
+                <input
+                  type="password"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder="Masukkan API Key Anda..."
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-teal-500 focus:ring-2 focus:ring-teal-200 transition-all outline-none bg-slate-50 focus:bg-white text-sm font-mono"
+                />
+                <p className="text-xs text-slate-500 mt-1">
+                  Dapatkan API Key gratis di <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-teal-600 hover:underline font-semibold">Google AI Studio</a>. Disimpan aman secara lokal di browser Anda.
+                </p>
+              </div>
+
               {/* Pindah ke Sini: Pilihan Ruangan */}
               <div>
                 <label className="flex items-center text-sm font-semibold text-slate-600 mb-2">
@@ -420,7 +450,7 @@ export default function App() {
                 <p className="text-xs text-slate-500 mt-1">Digunakan untuk tag <span className="font-mono">{`{ruangan}`}</span>.</p>
               </div>
 
-              {/* Pindah ke Sini: Pilihan Suara */}
+              {/* Pilihan Suara */}
               <div>
                 <label className="flex items-center text-sm font-semibold text-slate-600 mb-2">
                   <Settings className="w-4 h-4 mr-2 text-teal-500" /> Tipe Suara AI
