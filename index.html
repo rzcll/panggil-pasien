@@ -53,6 +53,17 @@ const fetchWithRetry = async (url, options, maxRetries = 3) => {
 };
 
 export default function App() {
+  // --- PERBAIKAN UNTUK GITHUB PAGES (Otomatis memuat Tailwind CSS) ---
+  useEffect(() => {
+    // Memastikan skrip desain dimuat jika belum ada di index.html GitHub Anda
+    if (typeof document !== 'undefined' && !document.getElementById('tailwind-cdn-script')) {
+      const script = document.createElement('script');
+      script.id = 'tailwind-cdn-script';
+      script.src = 'https://cdn.tailwindcss.com';
+      document.head.appendChild(script);
+    }
+  }, []);
+
   // --- KONFIGURASI URL GOOGLE SCRIPT ---
   // Ganti URL ini dengan URL Web App Google Script Anda
   const GAS_URL = 'https://script.google.com/macros/s/AKfycbzkxhOF8Wa5YqKbWowv5wR0cgCogbWvxsyyWTpUgQQokRKLsIhs_zECJ_ST0iuA2yc_Qg/exec'; 
