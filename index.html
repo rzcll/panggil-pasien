@@ -17,6 +17,9 @@
     
     <!-- Memuat Babel untuk menerjemahkan kode React di dalam browser -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Memuat Supabase JS Client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body class="bg-slate-50 font-sans antialiased text-slate-800">
     
@@ -26,8 +29,14 @@
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
-        // URL Google Script Anda
-        const GAS_URL = 'https://script.google.com/macros/s/AKfycbzkxhOF8Wa5YqKbWowv5wR0cgCogbWvxsyyWTpUgQQokRKLsIhs_zECJ_ST0iuA2yc_Qg/exec'; 
+        // --- KONFIGURASI SUPABASE ---
+        // GANTI DENGAN URL DAN ANON KEY DARI PROJECT SUPABASE ANDA
+        // Penting: Pastikan URL diawali dengan https://
+        const SUPABASE_URL = 'https://nocfgcdhmsdrtkcpabgw.supabase.co'; 
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5vY2ZnY2RobXNkcnRrY3BhYmd3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUyMjE2MzgsImV4cCI6MjEwMDc5NzYzOH0.8cd9wVeL4P6fXd9yvZaiKWZhR6UrjVT5qCepbvDO6lE';
+        
+        // Inisialisasi Klien Supabase
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         // Fungsi mengubah data suara AI menjadi file Audio
         function pcmBase64ToWav(base64, sampleRate = 24000) {
@@ -160,16 +169,25 @@
                 setLoginError('');
 
                 try {
-                    const response = await fetch(`${GAS_URL}?action=login&username=${encodeURIComponent(username)}`);
-                    const result = await response.json();
+                    // Mengambil data dari tabel 'rooms' di Supabase
+                    const { data, error } = await supabaseClient
+                        .from('rooms')
+                        .select('username, template, api_key')
+                        .eq('username', username)
+                        .single();
 
-                    if (result.success) {
-                        setTemplateText(result.template);
-                        setRoom(username);
-                        setGeminiApiKey(result.apiKey || ''); 
+                    if (error) {
+                        // Kode PGRST116 berarti tidak ada data yang ditemukan (0 rows)
+                        if (error.code === 'PGRST116') {
+                            setLoginError('Username/Ruangan tidak ditemukan di database.');
+                        } else {
+                            setLoginError(error.message || 'Gagal terhubung ke Supabase');
+                        }
+                    } else if (data) {
+                        setTemplateText(data.template || '');
+                        setRoom(data.username);
+                        setGeminiApiKey(data.api_key || ''); 
                         setIsLoggedIn(true);
-                    } else {
-                        setLoginError(result.error || 'Gagal terhubung ke sistem');
                     }
                 } catch (error) {
                     setLoginError('Terjadi kesalahan jaringan. Periksa koneksi internet Anda.');
@@ -181,12 +199,16 @@
             const handleSaveSettings = async () => {
                 setSaveLoading(true);
                 try {
-                    const response = await fetch(`${GAS_URL}?action=save&username=${encodeURIComponent(username)}&template=${encodeURIComponent(templateText)}`);
-                    const result = await response.json();
-                    if (result.success) {
-                        setShowSettings(false);
+                    // Menyimpan/Update template ke tabel 'rooms' di Supabase
+                    const { error } = await supabaseClient
+                        .from('rooms')
+                        .update({ template: templateText })
+                        .eq('username', username);
+
+                    if (error) {
+                        setErrorMessage("Gagal menyimpan pengaturan ke Cloud: " + error.message);
                     } else {
-                        setErrorMessage("Gagal menyimpan pengaturan ke Cloud.");
+                        setShowSettings(false);
                     }
                 } catch (error) {
                     setErrorMessage("Terjadi kesalahan jaringan saat menyimpan.");
@@ -216,26 +238,26 @@
                 // agar sistem AI langsung mengaktifkan logat lokal yang fasih dan intonasi manusia asli
                 const aiPrompt = `Ucapkan kalimat berikut dengan nada bicara manusia asli yang sangat natural, ramah, dan fasih berbahasa Indonesia tanpa logat asing: ${announcementText}`;
 
-            try {
-                if (!geminiApiKey) {
-                    throw new Error("API Key tidak ditemukan! Harap masukkan API Key di Sel C1 (Sheet Data).");
-                }
+                try {
+                    if (!geminiApiKey) {
+                        throw new Error("API Key tidak ditemukan di database Supabase.");
+                    }
 
-                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${geminiApiKey}`;
-                
-                const payload = {
-                    contents: [{ parts: [{ text: aiPrompt }] }],
-                    generationConfig: {
-                        responseModalities: ["AUDIO"],
-                        speechConfig: {
-                            voiceConfig: { prebuiltVoiceConfig: { voiceName: voiceName } }
-                        }
-                    },
-                    model: "gemini-2.5-flash-preview-tts"
-                };
+                    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${geminiApiKey}`;
+                    
+                    const payload = {
+                        contents: [{ parts: [{ text: aiPrompt }] }],
+                        generationConfig: {
+                            responseModalities: ["AUDIO"],
+                            speechConfig: {
+                                voiceConfig: { prebuiltVoiceConfig: { voiceName: voiceName } }
+                            }
+                        },
+                        model: "gemini-2.5-flash-preview-tts"
+                    };
 
-                const data = await fetchWithRetry(url, {
-                    method: "POST",
+                    const data = await fetchWithRetry(url, {
+                        method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify(payload)
                     });
@@ -268,8 +290,7 @@
                 } catch (err) {
                     console.error("Kesalahan AI:", err);
                     setStatus('error');
-                    // Langsung menampilkan error API Key agar pengguna tahu mengapa suara AI tidak keluar
-                    setErrorMessage(`AI Gagal: ${err.message}. Pastikan API Key Anda di Sel C1 (Sheet Data) benar dan aktif!`);
+                    setErrorMessage(`AI Gagal: ${err.message}`);
                 }
             };
 
@@ -425,7 +446,6 @@
                             </div>
                         )}
 
-                        {}
                         <div className="mt-8 space-y-4">
                             {status === 'manual_play' ? (
                                 <button
@@ -463,7 +483,6 @@
                         </div>
                     </div>
 
-                    {}
                     {showSettings && (
                         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
                             <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl p-8 transform transition-all">
@@ -493,7 +512,7 @@
                                             value={templateText}
                                             onChange={(e) => {
                                                 setTemplateText(e.target.value);
-                                                setAudioUrl(null); // Otomatis hapus memori audio lama jika template diubah
+                                                setAudioUrl(null); 
                                             }}
                                             rows="4"
                                             className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:border-teal-500 focus:ring-4 focus:ring-teal-500/10 transition-all outline-none bg-slate-50 focus:bg-white resize-none text-sm font-medium shadow-inner"
@@ -512,7 +531,7 @@
                                             value={voiceName}
                                             onChange={(e) => {
                                                 setVoiceName(e.target.value);
-                                                setAudioUrl(null); // Otomatis hapus memori audio lama agar user memanggil ulang suara baru
+                                                setAudioUrl(null);
                                             }}
                                             className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:border-teal-500 focus:ring-4 focus:ring-teal-500/10 transition-all outline-none bg-slate-50 focus:bg-white text-sm font-medium cursor-pointer shadow-inner"
                                         >
